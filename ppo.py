@@ -104,8 +104,10 @@ class PPO:
 	def run(self, total_ts=100000):
 		ts = 0	# Current number of timestep
 		while t_so_far < total_timesteps:
-
-			ts += 1 # Increment timestep
+			# Generate episodes (trajectories) with the actual policy
+			batch_state, batch_action, batch_log_prob, batch_rtg, batch_ep_len = self.generate_traj()
+			# Increment timestep by the number of timestep we used in the batch
+			ts += np.sum(batch_ep_len)
 
 
 	# Generate a batch of episodes (trajectories) using the actual policy
