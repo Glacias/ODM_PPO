@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pickle
 
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +12,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.optim import Adam
 from torch.distributions import MultivariateNormal
+
 
 class cls_policy():
 	def choose_action(self, state):
@@ -48,7 +50,7 @@ class policy_PPO(cls_policy):
 
 		# Set the standart deviation for actions
 		self.std_vect = torch.full(size=(num_actions,), fill_value=std_dev)
-		
+
 		# Create the covariance matrix
 		self.cov_mat = torch.diag(self.std_vect)
 
@@ -124,22 +126,24 @@ class Net_actor_discrete(nn.Module):
 		return x
 
 
-# generate a traj and return the cumulative discounted reward and the time alive
-def gen_ep_tot_r_disc(env, T, gamma, pol):
+# generate a traj and return the cumulative rewards and the time alive
+def gen_ep_cumul_r(env, T, gamma, pol):
 
 	state = env.reset()
 
 	done = False
 
 	discount = 1
-	tot_r_disc = 0
+	cumul_r_disc = 0
+	cumul_r_undisc = 0
 	time_alive = T
 
 	for i in range(T):
 		u = pol.choose_action(state)
 		state, r, done, _ = env.step([u])
 
-		tot_r_disc += r * discount
+		cumul_r_disc += r * discount
+		cumul_r_undisc += r
 
 		# decrease the cumulative discount
 		discount *= gamma
@@ -149,23 +153,27 @@ def gen_ep_tot_r_disc(env, T, gamma, pol):
 			time_alive = i+1
 			break
 
-	return tot_r_disc, time_alive
+	return cumul_r_disc, cumul_r_undisc, time_alive
 
 # generate "n_sim" traj and return the average of their
-# cumulative discounted reward and time alive
-def get_avg_disc_r(env, T, gamma, pol, n_sim):
+# cumulative rewards and time alive
+def get_avg_cumul_r(env, T, gamma, pol, n_sim):
 	avg_disc_r = 0
+	avg_undisc_r = 0
 	avg_time_alive = 0
+
+	print(f'sim -> \tsteps \t| c_disc_r \t\t| c_undisc_r')
 
 	# n_sim times
 	for i in range(n_sim):
 		# get metrics on a single traj
-		new_disc_r, new_time_alive = gen_ep_tot_r_disc(env, T, gamma, pol)
+		new_disc_r, new_undisc_r, new_time_alive = gen_ep_cumul_r(env, T, gamma, pol)
 		avg_disc_r += new_disc_r
+		avg_undisc_r += new_undisc_r
 		avg_time_alive += new_time_alive
-		print(f'{i+1} -> \t{new_time_alive} \t| {new_disc_r}')
+		print(f'{i+1} -> \t{new_time_alive} \t| {new_disc_r} \t| {new_undisc_r}')
 
-	return avg_disc_r/n_sim, avg_time_alive/n_sim
+	return avg_disc_r/n_sim, avg_undisc_r/n_sim, avg_time_alive/n_sim
 
 
 
@@ -181,32 +189,32 @@ if __name__ == '__main__':
 	#env.render()
 	env.reset()
 
-	#U = [-1, 1]
 	U = [-1, 1]
+	#U = [-1, 0, 1]
 	#U = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 
-	"""
-	filename = 'models/Q_estimator_ExTrees2_v2.sav'
+
+	filename = 'models/Q_estimator_ExTrees_2.sav'
 	with open(filename, 'rb') as file:
 		Q_est = pickle.load(file)
 	pol = policy_estimator(U, Q_est)
-	"""
+
 	"""
 	path_actor = "ppo_actor.pth"
 	std_dev = 0.0000001
 	pol = policy_PPO(num_states, num_actions, path_actor, std_dev)
 	"""
-
+	"""
 	num_actions = len(U)
 	path_actor = "ppo_d_actor.pth"
 	pol = policy_PPO_discrete(num_states, num_actions, path_actor, U)
-
+	"""
 
 	T = 1000
 	gamma = 0.99 # set gamma to 1 for undiscounted version
 	n_sim = 200
 
-	avg_disc_r, avg_time_alive = get_avg_disc_r(env, T, gamma, pol, n_sim)
+	avg_disc_r, avg_undisc_r, avg_time_alive = get_avg_cumul_r(env, T, gamma, pol, n_sim)
 
-	print(f'mean -> {avg_time_alive} \t| {avg_disc_r}')
+	print(f'mean -> {avg_time_alive} \t| {avg_disc_r} \t| {avg_undisc_r}')
 
