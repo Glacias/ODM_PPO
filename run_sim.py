@@ -47,7 +47,7 @@ class policy_PPO(cls_policy):
 
 		# Set the standart deviation for actions
 		self.std_vect = torch.full(size=(num_actions,), fill_value=std_dev)
-		
+
 		# Create the covariance matrix
 		self.cov_mat = torch.diag(self.std_vect)
 
@@ -130,15 +130,7 @@ if __name__ == '__main__':
 	env = gym.make(problem)
 
 	num_states = env.observation_space.shape[0]
-	print("Size of State Space ->  {}".format(num_states))
 	num_actions = env.action_space.shape[0]
-	print("Size of Action Space ->  {}".format(num_actions))
-
-	upper_bound = env.action_space.high[0]
-	lower_bound = env.action_space.low[0]
-
-	print("Max Value of Action ->  {}".format(upper_bound))
-	print("Min Value of Action ->  {}".format(lower_bound))
 
 	U = [-1.0, 1.0]
 
@@ -155,28 +147,36 @@ if __name__ == '__main__':
 	pol = policy_PPO(num_states, num_actions, path_actor, std_dev)
 	"""
 
-	
+
 	num_actions = len(U)
 	path_actor = "ppo_d_actor.pth"
 	pol = policy_PPO_discrete(num_states, num_actions, path_actor, U)
-	
+
 
 	env.render()
 	state = env.reset()
 
-	i = 0
+	step = 0
 	r_sim = 0
+	r_disc_sim = 0
+	disc = 1
+	gamma = 0.99
+
 	while True:
 		time.sleep(0.01)
 		#u = 2*np.random.random()-1
 		u = pol.choose_action(state)
 		state, r, done, _ = env.step([u])
 		r_sim += r
-		i += 1
+		r_disc_sim += disc * r
+		disc *= gamma
+		step += 1
 
 		if done == True:
-			print(f'{i}\t| {r_sim}')
+			print(f'{step}\t| undisc : {r_sim} \t| disc : {r_disc_sim}')
 			time.sleep(0.5)
 			state = env.reset()
 			r_sim = 0
-			i = 0
+			r_disc_sim = 0
+			disc = 1
+			step = 0
