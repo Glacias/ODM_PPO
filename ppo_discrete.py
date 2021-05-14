@@ -25,6 +25,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from torch.optim import Adam
 from torch.distributions import MultivariateNormal
+from torch.distributions import Categorical
 
 ### Classes ###
 
@@ -49,18 +50,20 @@ class Net_actor(nn.Module):
 		self.fc1 = nn.Linear(dim_in, 256)
 		self.fc2 = nn.Linear(256, 256)
 		self.fc3 = nn.Linear(256, dim_out)
+		self.sm = nn.Softmax(0)
 
 	def forward(self, x):
 		x = F.relu(self.fc1(x))
 		x = F.relu(self.fc2(x))
-		x = self.fc3(x)
+		x = F.relu(self.fc3(x))
+		x = self.sm(x)
 		return x
 
 
 ### PPO class ###
 
 class PPO:
-	def __init__(self, env):
+	def __init__(self, env, action_space):
 		## Parameters
 		self.gamma = 0.99 			# Decay factor
 		self.ts_per_batch = 5000 	# Number of timestep per batch
@@ -73,8 +76,9 @@ class PPO:
 
 		# Setup environment
 		self.env = env
+		self.action_space = action_space
 		self.num_states = self.env.observation_space.shape[0]
-		self.num_actions = self.env.action_space.shape[0]
+		self.num_actions = len(action_space)
 
 		## Setup networks for actor and critic
 		self.actor = Net_actor(self.num_states, self.num_actions)
@@ -146,8 +150,8 @@ class PPO:
 			print(f"Avg Episode Length is {np.mean(batch_ep_len)}, {round((ts/total_ts)*100, 2)}% complete")
 
 		# Save the model
-		torch.save(self.actor.state_dict(), './ppo_actor.pth')
-		torch.save(self.critic.state_dict(), './ppo_critic.pth')
+		torch.save(self.actor.state_dict(), './ppo_d_actor.pth')
+		torch.save(self.critic.state_dict(), './ppo_d_critic.pth')
 
 
 	# Generate a batch of episodes (trajectories) using the actual policy
@@ -174,7 +178,7 @@ class PPO:
 				batch_action.append(action)
 				batch_log_prob.append(log_prob)
 				# Do a step in the environment
-				state, reward, done, _ = self.env.step(action)
+				state, reward, done, _ = self.env.step([self.action_space[action]])
 				# Increment timestep
 				ts += 1 
 				# Store reward
@@ -192,7 +196,7 @@ class PPO:
 
 		# Convert all the batch used for computation to tensors
 		batch_state = torch.tensor(batch_state, dtype=torch.float)
-		batch_action = torch.tensor(batch_action, dtype=torch.float)
+		batch_action = torch.tensor(batch_action, dtype=torch.int64)
 		batch_log_prob = torch.tensor(batch_log_prob, dtype=torch.float)
 		batch_rtg = torch.tensor(batch_rtg, dtype=torch.float)
 
@@ -204,16 +208,16 @@ class PPO:
 		if isinstance(state, np.ndarray):
 			state = torch.tensor(state, dtype=torch.float)
 		# Pass the state trough the actor network
-		# The output should correspond to the mean of the action
-		mean = self.actor(state)
-		# Create a multivariate normal distribution
-		norm_dist = MultivariateNormal(mean, self.cov_mat)
+		# The output should correspond to the probabilities of the action
+		prob = self.actor(state)
+		# Create a categorical normal distribution
+		m = Categorical(prob)
 		# Sample from the distribution
-		action = norm_dist.sample()
+		action = m.sample()
 		# Compute log probability
-		log_prob = norm_dist.log_prob(action)
+		log_prob = m.log_prob(action)
 		# Detach computational graph so that network does not compute gradient
-		return action.detach().numpy(), log_prob.detach()
+		return torch.tensor([action.detach()]), log_prob.detach()
 
 
 	# Compute batch rewards to go based on the batch of rewards
@@ -242,10 +246,10 @@ class PPO:
 	# Compute the log probability of actions 
 	def compute_log_prob(self, batch_state, batch_action):
 		# Pass the state trough the actor network
-		# The output should correspond to the mean of the action
-		mean = self.actor(batch_state)
+		# The output should correspond to the probabilities of the action
+		prob = self.actor(batch_state)
 		# Create a multivariate normal distribution
-		norm_dist = MultivariateNormal(mean, self.cov_mat)
+		norm_dist = Categorical(prob)
 		# Return log probability
 		return norm_dist.log_prob(batch_action)
 
@@ -295,8 +299,10 @@ if __name__ == '__main__':
 
 	#env.render() # To show the scene
 
+	U = [-1.0, 1.0]
+
 	## Run PPO
-	ppo = PPO(env)
+	ppo = PPO(env, U)
 	total_ts = 1000000
 	ppo.run(total_ts)
 
