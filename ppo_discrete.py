@@ -63,7 +63,7 @@ class Net_actor(nn.Module):
 ### PPO class ###
 
 class PPO:
-	def __init__(self, env, action_space):
+	def __init__(self, env, action_space, save_path_actor="./ppo_actor.pth", save_path_critic="./ppo_critic.pth"):
 		## Parameters
 		self.gamma = 0.99 			# Decay factor
 		self.ts_per_batch = 5000 	# Number of timestep per batch
@@ -80,6 +80,10 @@ class PPO:
 		self.num_states = self.env.observation_space.shape[0]
 		self.num_actions = len(action_space)
 
+		# Setup save_path
+		self.save_path_actor = save_path_actor
+		self.save_path_critic = save_path_critic
+
 		## Setup networks for actor and critic
 		self.actor = Net_actor(self.num_states, self.num_actions)
 		self.critic = Net_critic(self.num_states, 1)
@@ -94,18 +98,15 @@ class PPO:
 		# Create the covariance matrix
 		self.cov_mat = torch.diag(self.std_vect)
 
-		#### Test ####
-		#t = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], dtype=torch.float)
-		#a, p = self.policy(t)
-		#bq, ba, blp, brtg, blen = self.generate_traj()
-
 
 	## Implentation of pseudo-code from PPO-clip
-	def run(self, total_ts=10000):
+	def run(self, total_ts=10000, show_plot=False):
+		# Save reward for plot
+		all_rewards = []
 		ts = 0	# Current number of timestep
 		while ts < total_ts:
 			# Generate episodes (trajectories) with the actual policy
-			batch_state, batch_action, batch_log_prob, batch_rtg, batch_ep_len = self.generate_traj()
+			batch_state, batch_action, batch_log_prob, batch_rtg, batch_ep_len, batch_reward = self.generate_traj()
 			# Increment timestep by the number of timestep we used in the batch
 			ts += np.sum(batch_ep_len)
 
@@ -146,12 +147,29 @@ class PPO:
 				loss_critic.backward()
 				self.critic_optim.step()
 
+			# Save rewards for plot
+			all_rewards.append(batch_reward)
 			# Display progression
 			print(f"Avg Episode Length is {np.mean(batch_ep_len)}, {round((ts/total_ts)*100, 2)}% complete")
 
 		# Save the model
-		torch.save(self.actor.state_dict(), './ppo_d_actor.pth')
-		torch.save(self.critic.state_dict(), './ppo_d_critic.pth')
+		torch.save(self.actor.state_dict(), self.save_path_actor)
+		torch.save(self.critic.state_dict(), self.save_path_critic)
+
+		# Plot the rewards
+		if show_plot:
+			avg_cumul_rew = []
+			cumul_rew = []
+			i = 0
+			for b in all_rewards:
+				for ep in b:
+					cumul_rew.append(np.sum(ep))
+					avg_cumul_rew.append(np.mean(cumul_rew[-100:]))
+
+			plt.plot(avg_cumul_rew)
+			plt.xlabel("Episodes")
+			plt.ylabel("Average cumulative reward")
+			plt.show()
 
 
 	# Generate a batch of episodes (trajectories) using the actual policy
@@ -200,7 +218,7 @@ class PPO:
 		batch_log_prob = torch.tensor(batch_log_prob, dtype=torch.float)
 		batch_rtg = torch.tensor(batch_rtg, dtype=torch.float)
 
-		return batch_state, batch_action, batch_log_prob, batch_rtg, batch_ep_len
+		return batch_state, batch_action, batch_log_prob, batch_rtg, batch_ep_len, batch_reward
 
 	# Get the next action from current state by following the actual policy
 	def policy(self, state):
@@ -297,21 +315,13 @@ if __name__ == '__main__':
 	problem = "InvertedDoublePendulumPyBulletEnv-v0"
 	env = gym.make(problem)
 
-	#env.render() # To show the scene
+	# Number of discrete action
+	nb_discrete_action = 2
 
-	U = [-1.0, 1.0]
+	# Compute action space
+	U = np.linspace(-1, 1, nb_discrete_action)
 
 	## Run PPO
 	ppo = PPO(env, U)
 	total_ts = 1000000
 	ppo.run(total_ts)
-
-	"""
-	## Get the policy
-	num_states = env.observation_space.shape[0]
-	num_actions = env.action_space.shape[0]
-	path_actor = "ppo_actor.pth"
-	std_dev = 0.5
-	policy = policy_PPO(num_states, num_actions, path_actor, std_dev)
-
-	"""

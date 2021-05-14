@@ -1,3 +1,8 @@
+"""
+This code is used to run the policies obtain from the PPO and FQI algorithms
+and visually seen what is happening (it has to be stopped manually)
+"""
+
 import gym  # open ai gym
 import pybulletgym  # register PyBullet enviroments with open ai gym
 import time
@@ -132,26 +137,37 @@ if __name__ == '__main__':
 	num_states = env.observation_space.shape[0]
 	num_actions = env.action_space.shape[0]
 
-	U = [-1.0, 1.0]
+	# Choice =  1 -> PPO
+	# 			2 -> PPO discrete
+	# 			3 -> FQI
+	choice = 1
+	nb_discrete_action = 2
 
-	"""
-	filename = 'models/Q_estimator_ExTrees2_v2.sav'
-	with open(filename, 'rb') as file:
-		Q_est = pickle.load(file)
-	pol = policy_estimator(U, Q_est)
-	"""
+	# Compute action space
+	U = np.linspace(-1, 1, nb_discrete_action)
 
-	"""
-	path_actor = "ppo_actor.pth"
-	std_dev = 0.000000000001
-	pol = policy_PPO(num_states, num_actions, path_actor, std_dev)
-	"""
+	# PPO
+	if choice == 1:
+		path_actor = "ppo_actor.pth"
+		std_dev = 0.0000001
+		pol = policy_PPO(num_states, num_actions, path_actor, std_dev)
 
+	# PPO Discrete
+	elif choice == 2:
+		num_actions = len(U)
+		path_actor = "ppo_d_actor.pth"
+		pol = policy_PPO_discrete(num_states, num_actions, path_actor, U)
 
-	num_actions = len(U)
-	path_actor = "ppo_d_actor.pth"
-	pol = policy_PPO_discrete(num_states, num_actions, path_actor, U)
+	# FQI
+	elif choice == 3:
+		filename = 'Q_estimator_ExTrees.sav'
+		with open(filename, 'rb') as file:
+			Q_est = pickle.load(file)
+		pol = policy_estimator(U, Q_est)
 
+	# Selection error
+	else:
+		print("Choice selection is incorrect")
 
 	env.render()
 	state = env.reset()
