@@ -23,42 +23,14 @@ class policy_estimator(cls_policy):
 		self.Q_estimator = Q_estimator
 
 	def choose_action(self, state):
+		# action according to Q_est
 		X = np.concatenate((np.tile(state, (len(self.U), 1)), np.transpose([self.U])), axis = 1)
 		u_idx = np.array(self.Q_estimator.predict(X)).argmax()
 
 		return self.U[u_idx]
 
-"""
-def gen_ep(env, T):
 
-	pol = policy_rand([-1, 1])
-
-	prev_state = env.reset()
-	ep = np.zeros([T, 20])
-
-	done = False
-	terminal = -1
-
-	for i in range(T-1):
-		#time.sleep(0.01)
-		if done:
-			terminal = i
-			break
-		ep[i, :9] = prev_state
-		u = pol.choose_action(None)
-		new_state, r, done, _ = env.step([u])
-
-
-		ep[i, 9] = u
-		ep[i, 10] = r
-		ep[i, 11:] = new_state
-
-		prev_state = new_state
-
-
-	return ep[:terminal, :]
-"""
-
+# generate a traj and return the cumulative discounted reward and the time alive
 def gen_ep_tot_r_disc(env, T, gamma, pol):
 
 	state = env.reset()
@@ -70,24 +42,30 @@ def gen_ep_tot_r_disc(env, T, gamma, pol):
 	time_alive = T
 
 	for i in range(T):
-		#time.sleep(0.01)
 		u = pol.choose_action(state)
 		state, r, done, _ = env.step([u])
 
 		tot_r_disc += r * discount
+
+		# decrease the cumulative discount
 		discount *= gamma
 
+		# end if terminal state reached
 		if done:
 			time_alive = i+1
 			break
 
 	return tot_r_disc, time_alive
 
+# generate "n_sim" traj and return the average of their
+# cumulative discounted reward and time alive
 def get_avg_disc_r(env, T, gamma, pol, n_sim):
 	avg_disc_r = 0
 	avg_time_alive = 0
 
+	# n_sim times
 	for i in range(n_sim):
+		# get metrics on a single traj
 		new_disc_r, new_time_alive = gen_ep_tot_r_disc(env, T, gamma, pol)
 		avg_disc_r += new_disc_r
 		avg_time_alive += new_time_alive
@@ -115,9 +93,11 @@ if __name__ == '__main__':
 	#env.render()
 	env.reset()
 
-	U = [-1, 1]
+	#U = [-1, 1]
+	U = [-1, 0, 1]
+	#U = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 
-	filename = 'models/Q_estimator_ExTrees2_v2.sav'
+	filename = 'models/Q_estimator_ExTrees_3_eps.sav'
 	with open(filename, 'rb') as file:
 		Q_est = pickle.load(file)
 	pol = policy_estimator(U, Q_est)
@@ -125,28 +105,9 @@ if __name__ == '__main__':
 
 	T = 1000
 	gamma = 0.99 # set gamma to 1 for undiscounted version
-	n_sim = 100
+	n_sim = 200
 
 	avg_disc_r, avg_time_alive = get_avg_disc_r(env, T, gamma, pol, n_sim)
 
 	print(f'mean -> {avg_time_alive} \t| {avg_disc_r}')
 
-	"""
-	i = 0
-	U = [-1, 1]
-
-	while True:
-		time.sleep(0.01)
-		#a = 2*np.random.random()-1
-		a = U[np.random.randint(len(U))]
-		ret = env.step([a])
-		print(ret[0])
-		print(ret[2])
-		i+=1
-
-		if ret[2] == True:
-			print(i)
-			time.sleep(0.5)
-			env.reset()
-			i=0
-	"""

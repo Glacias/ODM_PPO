@@ -27,6 +27,7 @@ class policy_estimator(cls_policy):
 		self.Q_estimator = Q_estimator
 
 	def choose_action(self, state):
+		# action according to Q_est
 		X = np.concatenate((np.tile(state, (len(self.U), 1)), np.transpose([self.U])), axis = 1)
 		u_idx = np.array(self.Q_estimator.predict(X)).argmax()
 
@@ -41,16 +42,18 @@ class policy_eps_greedy_estimator(cls_policy):
 		self.eps = eps
 
 	def choose_action(self, state):
+		# random action
 		if np.random.rand() < self.eps:
 			return self.U[np.random.randint(len(self.U))]
+		# action according to Q_est
 		else:
 			X = np.concatenate((np.tile(state, (len(self.U), 1)), np.transpose([self.U])), axis = 1)
 			u_idx = np.array(self.Q_estimator.predict(X)).argmax()
 
 			return self.U[u_idx]
 
-
-def gen_ep(env, U, T, pol):
+# generate a single episode with "pol" policy up to horizon T
+def gen_ep(env, T, pol):
 
 	prev_state = env.reset()
 	ep = np.zeros([T, 20])
@@ -59,11 +62,13 @@ def gen_ep(env, U, T, pol):
 	terminal = -1
 
 	for i in range(T-1):
-		#time.sleep(0.01)
+		# end simulation if a terminal state has been reached
 		if done:
 			terminal = i
 			break
+
 		ep[i, :9] = prev_state
+		# take next step
 		u = pol.choose_action(prev_state)
 		new_state, r, done, _ = env.step([u])
 
@@ -81,11 +86,12 @@ def gen_ep(env, U, T, pol):
 def add_episode(observations, ep, terminal):
 	return np.append(observations, ep[0:terminal, :], axis=0)
 
-def gen_eps(env, U, T, n_ep, pol):
+# generate "n_ep" episodes with "pol" policy
+def gen_eps(env, T, n_ep, pol):
 	observations = np.empty([0,20])
 
 	for i in range(n_ep):
-		ep, terminal = gen_ep(env, U, T, pol)
+		ep, terminal = gen_ep(env, T, pol)
 		observations = add_episode(observations, ep, terminal)
 		print(f"{i+1} : {terminal}")
 
@@ -108,7 +114,7 @@ def build_y(observations, U, gamma, my_estimator):
 	# return all estimated Q_N
 	return observations[:, 10] + gamma * max_Q_prev
 
-# N value still active (to set a maximum of iteration) if thresh is set
+# compute an estimator of Q on a set of "observations" with "my_estimator" estimator with N_Q iteration
 def compute_Q_estimator(observations, U, gamma, my_estimator, N, verbose=False):
 
 	# output for Q_1
@@ -124,7 +130,7 @@ def compute_Q_estimator(observations, U, gamma, my_estimator, N, verbose=False):
 	t = 2
 	while(True):
 
-		# stopping rule 1 (default)
+		# stopping rule
 		if t > N:
 			break
 
@@ -153,12 +159,7 @@ def learn_Q_random(env, U, gamma, T, n_ep, my_estimator, N_Q, verbose=True):
 	print("Generating episodes") if verbose else ""
 
 	# generate episodes
-	observations = gen_eps(env, U, T, n_ep, policy_rand(U))
-
-	#test
-	action_vect = observations[:,9]
-	for u in U:
-		print(f"{u} : {np.count_nonzero(action_vect==u)}")
+	observations = gen_eps(env, T, n_ep, policy_rand(U))
 
 	print("\t{} tuples generated".format(observations.shape[0])) if verbose else ""
 
@@ -181,7 +182,7 @@ def learn_Q_eps_greedy(env, U, gamma, T, n_fit, ep_per_fit, Q_estimator, eps, N_
 		print("Current epsilon = {}".format(my_policy.eps)) if verbose else ""
 
 		# generate episodes using previous estimator of Q_N
-		observations = np.concatenate((observations, gen_eps(env, U, T, ep_per_fit, my_policy)))
+		observations = np.concatenate((observations, gen_eps(env, T, ep_per_fit, my_policy)))
 
 
 		print("\n\t{} new tuples generated, total of {}".format(observations.shape[0]-n_obs, observations.shape[0])) if verbose else ""
@@ -215,19 +216,6 @@ if __name__ == '__main__':
 	problem = "InvertedDoublePendulumPyBulletEnv-v0"
 	env = gym.make(problem)
 
-	num_states = env.observation_space.shape[0]
-	print("Size of State Space ->  {}".format(num_states))
-	num_actions = env.action_space.shape[0]
-	print("Size of Action Space ->  {}".format(num_actions))
-
-	upper_bound = env.action_space.high[0]
-	lower_bound = env.action_space.low[0]
-
-	print("Max Value of Action ->  {}".format(upper_bound))
-	print("Min Value of Action ->  {}".format(lower_bound))
-
-
-
 	#U = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 	U = [-1, 0, 1]
 	gamma = 0.99
@@ -240,13 +228,13 @@ if __name__ == '__main__':
 	N_Q = compute_N_Q(gamma, Br, thresh_NQ)
 	print(f"N_Q={N_Q}")
 
-
+	# for eps-greedy protocol
 	n_fit = 5
 	ep_per_fit = 200
 	eps = 0.1
 
-	#Q_estimator = learn_Q_random(env, U, gamma, T, n_ep, Q_estimator, N_Q, verbose=True)
-	Q_estimator = learn_Q_eps_greedy(env, U, gamma, T, n_fit, ep_per_fit, Q_estimator, eps, N_Q, eps_adapt=True, verbose=True)
+	Q_estimator = learn_Q_random(env, U, gamma, T, n_ep, Q_estimator, N_Q, verbose=True)
+	#Q_estimator = learn_Q_eps_greedy(env, U, gamma, T, n_fit, ep_per_fit, Q_estimator, eps, N_Q, eps_adapt=True, verbose=True)
 
 	# save the model to disk
 	filename = 'Q_estimator_ExTrees.sav'
